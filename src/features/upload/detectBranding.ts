@@ -78,6 +78,7 @@ export function normalizeFontName(raw: string | undefined | null): NormalizedFon
   if (lookup(name)) return { family: lookup(name)!, known: true }
 
   name = name.split(',')[0]
+  if (IGNORED_FONTS.has(compact(name))) return null
   // PostScript names: Family-Style. Keep the family part.
   if (!/\s/.test(name)) name = name.split('-')[0]
   name = name.replace(/(?:PSMT|PS|MT)$/, '')
