@@ -309,22 +309,27 @@ const HEADING_STYLE = /^(title|heading\s*\d|heading\d)$/i
 /** Font names used by headings in a DOCX, most specific first. */
 export function docxHeadingFonts(documentXml: string, stylesXml?: string, themeXml?: string): string[] {
   const fonts: string[] = []
+  const usedStyles = new Set<string>()
   // 1. Direct formatting on runs inside heading/title paragraphs.
   for (const p of documentXml.match(/<w:p\b[\s\S]*?<\/w:p>/g) ?? []) {
     const style = attr(p.match(/<w:pStyle\b[^>]*>/)?.[0] ?? '', 'w:val')
     if (style && HEADING_STYLE.test(style)) {
+      usedStyles.add(style.toLowerCase())
       const font = rFontsFamily(p, themeXml)
       if (font) fonts.push(font)
     }
   }
-  // 2. Title / heading paragraph styles.
+  // 2. Title / heading paragraph styles — styles the document actually uses first.
+  const used: string[] = []
+  const unused: string[] = []
   for (const s of stylesXml?.match(/<w:style\b[\s\S]*?<\/w:style>/g) ?? []) {
     const id = attr(s.match(/<w:style\b[^>]*>/)![0], 'w:styleId')
     if (id && HEADING_STYLE.test(id)) {
       const font = rFontsFamily(s, themeXml)
-      if (font) fonts.push(font)
+      if (font) (usedStyles.has(id.toLowerCase()) ? used : unused).push(font)
     }
   }
+  fonts.push(...used, ...unused)
   // 3. Theme heading font, then document defaults / theme body font.
   const major = themeFont(themeXml, 'major')
   if (major) fonts.push(major)

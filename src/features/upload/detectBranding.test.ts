@@ -166,6 +166,15 @@ describe('docxHeadingFonts', () => {
     const styles = `<w:styles ${W}><w:style w:type="paragraph" w:styleId="Heading2"><w:rPr><w:rFonts w:asciiTheme="majorHAnsi"/></w:rPr></w:style></w:styles>`
     expect(docxHeadingFonts('<w:p/>', styles, THEME)[0]).toBe('Calibri Light')
   })
+
+  it('ranks heading styles used by the document before unused ones', () => {
+    const styles = `<w:styles ${W}>
+      <w:style w:type="paragraph" w:styleId="Heading1"><w:rPr><w:rFonts w:asciiTheme="majorHAnsi"/></w:rPr></w:style>
+      <w:style w:type="paragraph" w:styleId="Title"><w:rPr><w:rFonts w:ascii="Poppins" w:hAnsi="Poppins"/></w:rPr></w:style>
+    </w:styles>`
+    const doc = `<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr><w:r><w:t>Acme</w:t></w:r></w:p>`
+    expect(docxHeadingFonts(doc, styles, THEME).slice(0, 2)).toEqual(['Poppins', 'Calibri Light'])
+  })
 })
 
 describe('detectDocxBranding', () => {

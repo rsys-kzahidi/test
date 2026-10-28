@@ -148,7 +148,8 @@ function indexHtml(title: string, branding: BrandingRefs, body: string, extraHea
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />${extraHead}
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />${extraHead}
     <title>${title}</title>${fontLinks}
   </head>
   <body>
