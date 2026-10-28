@@ -171,7 +171,7 @@ function brandingReadme(branding: BrandingRefs, themeFile: string, assetsDir: st
 
 function screensTable(screens: ProjectScreen[], dir: string, routePrefix: string): string {
   return screens
-    .map((s) => `| ${s.title.replace(/\|/g, '\\|')} | \`${routePrefix}${s.route}\` | \`${dir}/${s.folder}/\` |`)
+    .map((s) => `| ${s.title.replace(/[\\|]/g, '\\$&')} | \`${routePrefix}${s.route}\` | \`${dir}/${s.folder}/\` |`)
     .join('\n')
 }
 
