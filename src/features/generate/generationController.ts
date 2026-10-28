@@ -1,6 +1,7 @@
 import { frameworkFor, useAppStore } from '../../store/appStore'
 import type { Screen } from '../../types'
 import { createLLMClient } from '../llm/llmService'
+import { toBrandingRefs } from './generators/branding'
 import { runGenerationQueue } from './orchestrator'
 
 /**
@@ -45,6 +46,7 @@ export async function startGeneration(screens: Screen[]): Promise<void> {
       client,
       concurrency: 2,
       signal: local.signal,
+      branding: toBrandingRefs(state.branding),
       resolveFramework: (s) => frameworkFor(s, useAppStore.getState().framework),
       onUpdate: (result) => useAppStore.getState().setResult(result),
       isActive: (s) => useAppStore.getState().screens.some((sc) => sc.id === s.id),

@@ -1,17 +1,19 @@
 import { clsx } from 'clsx'
-import { CheckCircle2, Download, FolderDown, Package, Sparkles } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Download, FolderDown, Package, Rocket, Sparkles } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button, EmptyState, PageHeader } from '../../components/ui'
 import { useAppStore } from '../../store/appStore'
 import { toKebabCase } from '../../utils/strings'
 import { getGenerator } from '../generate/generators'
+import { sameBrandingRefs, toBrandingRefs } from '../generate/generators/branding'
 import { ScreenIcon } from '../screens/ScreenIcon'
 import { CodeViewer } from './CodeViewer'
+import { downloadProjectZip, isGenerationComplete } from './projectExport'
 import { downloadZip } from './zipExport'
 
 export function PreviewStep() {
-  const { screens, results, previewScreenId, openPreview, setStep } = useAppStore()
-  const [downloading, setDownloading] = useState<'all' | 'one' | null>(null)
+  const { screens, results, previewScreenId, openPreview, setStep, branding } = useAppStore()
+  const [downloading, setDownloading] = useState<'all' | 'one' | 'project' | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const ordered = screens.map((s) => results[s.id]).filter((r) => r?.status === 'done' && r.files.length > 0)
@@ -36,12 +38,17 @@ export function PreviewStep() {
     )
   }
 
-  const download = async (scope: 'all' | 'one') => {
+  const complete = isGenerationComplete(screens, results)
+  const refs = toBrandingRefs(branding)
+  const brandingChanged = ordered.some((r) => !sameBrandingRefs(r.branding, refs))
+
+  const download = async (scope: 'all' | 'one' | 'project') => {
     setDownloading(scope)
     setError(null)
     try {
-      if (scope === 'all') await downloadZip(ordered, screens)
-      else await downloadZip([selected], screens, `${toKebabCase(selected.screenName)}.zip`)
+      if (scope === 'project') await downloadProjectZip({ results: ordered, branding })
+      else if (scope === 'all') await downloadZip(ordered, screens, undefined, branding)
+      else await downloadZip([selected], screens, `${toKebabCase(selected.screenName)}.zip`, branding)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -74,9 +81,39 @@ export function PreviewStep() {
             >
               Download ZIP
             </Button>
+            <Button
+              variant="primary"
+              size="lg"
+              icon={<Rocket className="size-4" />}
+              loading={downloading === 'project'}
+              disabled={!complete || downloading !== null}
+              title={
+                complete
+                  ? 'Download a complete, runnable project with every generated screen wired in'
+                  : 'Available once every screen has finished generating'
+              }
+              onClick={() => void download('project')}
+            >
+              Export Full Project (ZIP)
+            </Button>
           </>
         }
       />
+      <p className="-mt-2 mb-4 text-sm text-slate-500 dark:text-slate-400">
+        {complete
+          ? 'All screens are generated. "Export Full Project" downloads a ready-to-run app (npm install && npm run dev / npm start) with every screen, the theme font and your logo.'
+          : '"Export Full Project" becomes available once every screen has finished generating (skipped or cancelled screens are ignored).'}
+      </p>
+      {brandingChanged && (
+        <p
+          role="status"
+          className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-200"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
+          Branding (logo or font) changed after some screens were generated. Regenerate them to apply it consistently;
+          exports always use the current branding.
+        </p>
+      )}
       {error && (
         <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">
           {error}

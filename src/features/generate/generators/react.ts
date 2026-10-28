@@ -1,5 +1,6 @@
-import type { GeneratedFile, Screen } from '../../../types'
+import type { BrandingRefs, GeneratedFile, Screen } from '../../../types'
 import { escapeMarkup, escapeSingleQuoted } from '../../../utils/strings'
+import { fontDeclaration, LOGO_PLACEHOLDER_TEXT } from './branding'
 import { analyseScreen, buildMockData, type ScreenModel } from './mockData'
 import { screenNames, type FrameworkGenerator, type ScreenNames } from './types'
 
@@ -10,6 +11,17 @@ function reactFiles(n: ScreenNames) {
     api: `use${n.pascal}Data.ts`,
     mock: `${n.kebab}.mock.json`,
   }
+}
+
+/** Logo import path relative to a screen folder (src/screens/<Name>/ → src/assets/). */
+export function reactLogoImportPath(logoAsset: string): string {
+  return `../../assets/${logoAsset}`
+}
+
+function renderBrand(branding: BrandingRefs): string {
+  return branding.logoAsset
+    ? `<img src={logoUrl} alt="Logo" className={styles.logo} />`
+    : `<span className={styles.logoPlaceholder} aria-hidden="true">${LOGO_PLACEHOLDER_TEXT}</span>`
 }
 
 function indent(text: string, spaces: number): string {
@@ -81,7 +93,7 @@ function renderButtons(buttons: string[], hasForm: boolean): string {
     .join('\n')
 }
 
-function componentSource(screen: Screen, n: ScreenNames, m: ScreenModel): string {
+function componentSource(screen: Screen, n: ScreenNames, m: ScreenModel, branding: BrandingRefs): string {
   const files = reactFiles(n)
   const hasForm = m.fields.length > 0
   const primary = escapeSingleQuoted(screen.buttons[0] ?? 'Save')
@@ -174,8 +186,10 @@ ${indent(buttons, 2)}
   const payload = hasForm ? 'values' : 'undefined'
   const guard = hasForm ? 'if (!data || !values) return null' : 'if (!data) return null'
 
+  const logoImport = branding.logoAsset ? `import logoUrl from '${reactLogoImportPath(branding.logoAsset)}'\n` : ''
+
   return `${imports}
-import styles from './${files.styles}'
+${logoImport}import styles from './${files.styles}'
 import { perform${n.pascal}Action, use${n.pascal}Data${typeImport} } from './${files.api.replace(/\.ts$/, '')}'
 
 /**
@@ -227,6 +241,7 @@ ${formState}
   return (
     <section className={styles.screen} aria-labelledby="${n.kebab}-title">
       <header className={styles.header}>
+        <div className={styles.brand}>${renderBrand(branding)}</div>
         <h1 id="${n.kebab}-title">${escapeMarkup(screen.name)}</h1>
         <p className={styles.muted}>${escapeMarkup(screen.description)}</p>
       </header>
@@ -321,12 +336,39 @@ export function use${n.pascal}Data() {
 `
 }
 
-const REACT_STYLES = `.screen {
+const reactStyles = (branding: BrandingRefs) => `.screen {
   max-width: 1100px;
   margin: 0 auto;
   padding: 2rem 1.5rem;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: ${fontDeclaration(branding)};
   color: #0f172a;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.logo {
+  display: block;
+  height: 40px;
+  width: auto;
+  max-width: 200px;
+  object-fit: contain;
+}
+
+.logoPlaceholder {
+  display: inline-grid;
+  place-items: center;
+  height: 40px;
+  padding: 0 0.75rem;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }
 
 .header h1 {
@@ -542,6 +584,13 @@ export const reactGenerator: FrameworkGenerator = {
     'The API module must import the mock JSON file and resolve it after a simulated latency (setTimeout) while a USE_MOCK flag is true; otherwise call fetch() on an exported endpoint constant.',
     'Handle loading, error (with retry) and empty states. Use semantic, accessible HTML (labels, scope, aria attributes).',
   ].join('\n- '),
+  brandingGuidelines(branding) {
+    return [
+      branding.logoAsset
+        ? `Render the brand logo at the top of the screen header: \`import logoUrl from '${reactLogoImportPath(branding.logoAsset)}'\` and \`<img src={logoUrl} alt="Logo" />\` (keep it about 40px tall).`
+        : `No logo was provided: render a small "${LOGO_PLACEHOLDER_TEXT}" placeholder (dashed border box) at the top of the screen header instead of an image.`,
+    ]
+  },
   expectedFiles(screen) {
     const f = reactFiles(screenNames(screen))
     return [
@@ -551,13 +600,13 @@ export const reactGenerator: FrameworkGenerator = {
       { path: f.mock, kind: 'mock-data', purpose: 'Dummy JSON API response consumed by the screen' },
     ]
   },
-  generateOffline(screen: Screen): GeneratedFile[] {
+  generateOffline(screen: Screen, branding: BrandingRefs = {}): GeneratedFile[] {
     const n = screenNames(screen)
     const m = analyseScreen(screen)
     const f = reactFiles(n)
     return [
-      { path: f.component, language: 'tsx', kind: 'component', content: componentSource(screen, n, m) },
-      { path: f.styles, language: 'css', kind: 'styles', content: REACT_STYLES },
+      { path: f.component, language: 'tsx', kind: 'component', content: componentSource(screen, n, m, branding) },
+      { path: f.styles, language: 'css', kind: 'styles', content: reactStyles(branding) },
       { path: f.api, language: 'typescript', kind: 'api-service', content: apiSource(screen, n, m.fields.length > 0) },
       {
         path: f.mock,

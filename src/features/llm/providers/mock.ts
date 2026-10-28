@@ -50,7 +50,7 @@ export function createMockClient(config: LLMProviderConfig, options: MockClientO
         fields: spec.screen.fields ?? [],
         buttons: spec.screen.buttons ?? [],
       }
-      const files = getGenerator(spec.framework).generateOffline(screen)
+      const files = getGenerator(spec.framework).generateOffline(screen, spec.branding)
       return formatFilesAsResponse(files)
     },
   }

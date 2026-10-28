@@ -1,7 +1,10 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { defaultProviderConfigs } from '../features/llm/llmService'
+import { mergeBrandingDetection } from '../features/upload/detectBranding'
 import type {
+  Branding,
+  BrandingDetection,
   GenerationResult,
   LLMProviderConfig,
   ProviderId,
@@ -41,6 +44,10 @@ interface AppState {
   results: Record<string, GenerationResult>
   /** Screen selected in the preview step. */
   previewScreenId: string | null
+  /** Logo / font signals detected in the uploaded documents (merged across uploads). */
+  brandingDetection: BrandingDetection | null
+  /** Branding confirmed by the user; applied to every generated screen and the exported project. */
+  branding: Branding
 
   setStep: (step: StepId) => void
   toggleTheme: () => void
@@ -58,6 +65,8 @@ interface AppState {
   setResult: (result: GenerationResult) => void
   clearResults: () => void
   openPreview: (screenId: string | null) => void
+  addBrandingDetection: (detection: BrandingDetection) => void
+  setBranding: (patch: Partial<Branding>) => void
   reset: () => void
 }
 
@@ -74,6 +83,8 @@ export const useAppStore = create<AppState>()(
       connection: {},
       results: {},
       previewScreenId: null,
+      brandingDetection: null,
+      branding: {},
 
       setStep: (step) => set({ step }),
       toggleTheme: () => set((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),
@@ -101,7 +112,7 @@ export const useAppStore = create<AppState>()(
           ;[screens[i], screens[j]] = [screens[j], screens[i]]
           return { screens }
         }),
-      clearScreens: () => set({ screens: [], uploads: [], results: {} }),
+      clearScreens: () => set({ screens: [], uploads: [], results: {}, brandingDetection: null, branding: {} }),
       setFramework: (framework) => set({ framework }),
       setActiveProvider: (activeProvider) => set({ activeProvider }),
       updateProvider: (id, patch) =>
@@ -119,13 +130,18 @@ export const useAppStore = create<AppState>()(
         ),
       clearResults: () => set({ results: {} }),
       openPreview: (previewScreenId) => set({ previewScreenId, step: 'preview' }),
-      reset: () => set({ step: 'upload', uploads: [], screens: [], results: {} }),
+      addBrandingDetection: (detection) =>
+        set((s) => ({ brandingDetection: mergeBrandingDetection(s.brandingDetection, detection) })),
+      setBranding: (patch) => set((s) => ({ branding: { ...s.branding, ...patch } })),
+      reset: () =>
+        set({ step: 'upload', uploads: [], screens: [], results: {}, brandingDetection: null, branding: {} }),
     }),
     {
       name: 'ui-coding-agent',
       version: 1,
       storage: createJSONStorage(() => localStorage),
       // Only preferences + provider settings are persisted (API keys stay in this browser's localStorage).
+      // Branding (incl. the logo data URL) is session-only, like the screens it applies to.
       partialize: (s) => ({
         theme: s.theme,
         framework: s.framework,

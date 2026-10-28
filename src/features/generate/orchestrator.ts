@@ -1,4 +1,4 @@
-import type { GeneratedFile, GenerationResult, Screen, TargetFramework } from '../../types'
+import type { BrandingRefs, GeneratedFile, GenerationResult, Screen, TargetFramework } from '../../types'
 import type { LLMClient } from '../llm/types'
 import { parseGeneratedFiles } from './fileFormat'
 import { getGenerator } from './generators'
@@ -7,12 +7,14 @@ import { buildGenerationMessages } from './prompts'
 export interface GenerateScreenOptions {
   client: LLMClient
   framework: TargetFramework
+  /** Confirmed font family / logo asset applied to the generated screen. */
+  branding?: BrandingRefs
   signal?: AbortSignal
 }
 
 /** Generate the files for a single screen through the provider-agnostic client. */
 export async function generateScreen(screen: Screen, options: GenerateScreenOptions): Promise<GeneratedFile[]> {
-  const messages = buildGenerationMessages(screen, options.framework)
+  const messages = buildGenerationMessages(screen, options.framework, options.branding)
   const response = await options.client.complete(messages, { signal: options.signal })
   const files = parseGeneratedFiles(response)
   if (files.length === 0) {
@@ -41,6 +43,7 @@ export interface RunQueueOptions {
   isActive?: (screen: Screen) => boolean
   concurrency?: number
   signal?: AbortSignal
+  branding?: BrandingRefs
 }
 
 function isAbort(err: unknown): boolean {
@@ -52,7 +55,7 @@ function isAbort(err: unknown): boolean {
  * status transitions (queued → generating → done | error) via `onUpdate`.
  */
 export async function runGenerationQueue(screens: Screen[], options: RunQueueOptions): Promise<GenerationResult[]> {
-  const { client, resolveFramework, onUpdate, signal, isActive } = options
+  const { client, resolveFramework, onUpdate, signal, isActive, branding } = options
   const concurrency = Math.max(1, options.concurrency ?? 2)
   const results: GenerationResult[] = screens.map((s) => ({
     screenId: s.id,
@@ -62,6 +65,7 @@ export async function runGenerationQueue(screens: Screen[], options: RunQueueOpt
     files: [],
     provider: client.providerId,
     model: client.model,
+    ...(branding ? { branding } : {}),
   }))
   results.forEach((r) => onUpdate({ ...r }))
 
@@ -83,7 +87,7 @@ export async function runGenerationQueue(screens: Screen[], options: RunQueueOpt
       const startedAt = Date.now()
       onUpdate({ ...base, status: 'generating', startedAt })
       try {
-        const files = await generateScreen(screen, { client, framework: base.framework, signal })
+        const files = await generateScreen(screen, { client, framework: base.framework, branding, signal })
         const missing = findMissingFiles(screen, base.framework, files)
         const warnings = missing.length ? [`Model did not return: ${missing.join(', ')}`] : undefined
         results[index] = { ...base, status: 'done', files, warnings, startedAt, finishedAt: Date.now() }

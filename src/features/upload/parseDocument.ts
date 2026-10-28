@@ -1,4 +1,5 @@
-import type { Screen } from '../../types'
+import type { BrandingDetection, Screen } from '../../types'
+import { detectDocxBranding, detectHeadingFont, findHeaderImage, NO_BRANDING_DETECTED, type FontSample } from './detectBranding'
 import { detectScreens } from './detectScreens'
 
 export type DocumentKind = 'pdf' | 'docx' | 'text'
@@ -41,7 +42,11 @@ interface PdfTextItem {
   str: string
   hasEOL?: boolean
   transform?: number[]
+  fontName?: string
 }
+
+/** Pages inspected for branding (fonts are only resolved for pages whose operator list was loaded). */
+const BRANDING_PAGES = 3
 
 /** Rebuild readable lines from pdf.js text items (which are positioned fragments). */
 export function pdfItemsToText(items: PdfTextItem[]): string {
@@ -63,26 +68,64 @@ export function pdfItemsToText(items: PdfTextItem[]): string {
     .join('\n')
 }
 
-/** Extract text from a PDF using pdf.js. Pages are separated by a form-feed (`\f`). */
-export async function extractPdfText(data: ArrayBuffer): Promise<string> {
+export interface PdfAnalysis {
+  text: string
+  branding: BrandingDetection
+}
+
+/**
+ * Extract text from a PDF using pdf.js (pages separated by a form-feed `\f`) and,
+ * when `detectBranding` is set, look for a header logo on page 1 and the heading font.
+ * Branding detection is best-effort and never fails text extraction.
+ */
+export async function analysePdf(data: ArrayBuffer, { detectBranding = true } = {}): Promise<PdfAnalysis> {
   const pdfjs = await import('pdfjs-dist')
   if (typeof window !== 'undefined' && !pdfjs.GlobalWorkerOptions.workerSrc) {
     const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url')
     pdfjs.GlobalWorkerOptions.workerSrc = worker.default
   }
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(data) })
+  // fontExtraProperties keeps the real font name (e.g. "ABCDEF+Inter-Bold") on loaded fonts.
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(data), fontExtraProperties: detectBranding })
   const doc = await loadingTask.promise
   const pages: string[] = []
+  const samples: FontSample[] = []
+  let logoDetected = false
   try {
     for (let i = 1; i <= doc.numPages; i++) {
       const page = await doc.getPage(i)
       const content = await page.getTextContent()
-      pages.push(pdfItemsToText(content.items as PdfTextItem[]))
+      const items = content.items as PdfTextItem[]
+      pages.push(pdfItemsToText(items))
+      if (!detectBranding || i > BRANDING_PAGES) continue
+      try {
+        const ops = await page.getOperatorList()
+        if (i === 1) logoDetected = !!findHeaderImage(ops, page.view, pdfjs.OPS)
+        for (const item of items) {
+          if (!item.fontName || !item.transform || !item.str?.trim()) continue
+          let fontName = content.styles[item.fontName]?.fontFamily ?? ''
+          try {
+            fontName = (page.commonObjs.get(item.fontName) as { name?: string } | null)?.name ?? fontName
+          } catch {
+            // Font not resolved: fall back to pdf.js' generic family (ignored by the heuristics).
+          }
+          samples.push({ fontName, size: Math.hypot(item.transform[2], item.transform[3]), text: item.str })
+        }
+      } catch {
+        // Ignore branding failures for this page.
+      }
     }
   } finally {
     await loadingTask.destroy()
   }
-  return pages.join('\n\f\n')
+  return {
+    text: pages.join('\n\f\n'),
+    branding: detectBranding ? { logoDetected, ...detectHeadingFont(samples) } : NO_BRANDING_DETECTED,
+  }
+}
+
+/** Extract text from a PDF using pdf.js. Pages are separated by a form-feed (`\f`). */
+export async function extractPdfText(data: ArrayBuffer): Promise<string> {
+  return (await analysePdf(data, { detectBranding: false })).text
 }
 
 /** Extract raw text from a Word .docx using mammoth. */
@@ -114,17 +157,43 @@ export interface ParsedDocument {
   kind: DocumentKind
   text: string
   screens: Screen[]
+  /** Logo / heading font signals found in the document. */
+  branding: BrandingDetection
 }
 
-/** Extract text from a document and detect the screens it describes. */
+/** Extract text + branding signals from any supported document. */
+async function extractTextAndBranding(file: DocumentLike, kind: DocumentKind): Promise<PdfAnalysis> {
+  switch (kind) {
+    case 'pdf':
+      return analysePdf(await file.arrayBuffer())
+    case 'docx': {
+      const data = await file.arrayBuffer()
+      const [text, branding] = await Promise.all([
+        extractDocxText(data),
+        detectDocxBranding(data).catch(() => NO_BRANDING_DETECTED),
+      ])
+      return { text, branding }
+    }
+    case 'text':
+      return { text: await file.text(), branding: NO_BRANDING_DETECTED }
+  }
+}
+
+/** Extract text from a document and detect the screens (and branding) it describes. */
 export async function parseDocument(file: DocumentLike): Promise<ParsedDocument> {
   const kind = getDocumentKind(file.name, file.type)
   if (!kind) throw new UnsupportedDocumentError(file.name)
-  const text = await extractText(file)
+  const { text, branding } = await extractTextAndBranding(file, kind)
   if (!text.trim()) {
     throw new Error(
       `No text could be extracted from "${file.name}". Scanned/image-only documents are not supported (no OCR).`,
     )
   }
-  return { fileName: file.name, kind, text, screens: detectScreens(text, file.name) }
+  return {
+    fileName: file.name,
+    kind,
+    text,
+    screens: detectScreens(text, file.name),
+    branding: { ...branding, sourceFile: file.name },
+  }
 }

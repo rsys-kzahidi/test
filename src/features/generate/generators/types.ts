@@ -1,4 +1,4 @@
-import type { GeneratedFile, GeneratedFileKind, Screen, ScreenField, TargetFramework } from '../../../types'
+import type { BrandingRefs, GeneratedFile, GeneratedFileKind, Screen, ScreenField, TargetFramework } from '../../../types'
 import { toCamelCase, toKebabCase, toPascalCase } from '../../../utils/strings'
 
 /**
@@ -13,8 +13,13 @@ export interface FrameworkGenerator {
   expectedFiles(screen: Screen): Array<{ path: string; kind: GeneratedFileKind; purpose: string }>
   /** Framework specific coding conventions injected into the LLM prompt. */
   promptGuidelines: string
-  /** Deterministic template-based generation used by the offline/mock provider. */
-  generateOffline(screen: Screen): GeneratedFile[]
+  /** Framework specific instructions for applying the brand font and logo, injected into the LLM prompt. */
+  brandingGuidelines(branding: BrandingRefs): string[]
+  /**
+   * Deterministic template-based generation used by the offline/mock provider.
+   * `branding` threads the confirmed font family and logo asset into the output.
+   */
+  generateOffline(screen: Screen, branding?: BrandingRefs): GeneratedFile[]
 }
 
 /** Naming helpers shared by generators. */
