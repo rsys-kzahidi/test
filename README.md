@@ -5,7 +5,12 @@ Turn UI design documents (PDF or Word) into working front-end code.
 Upload a design spec, review the screens the agent extracts, pick an LLM (OpenAI, Anthropic Claude, or a
 locally hosted model such as Ollama / LM Studio), and generate — per screen — an **Angular or React component,
 its styles, a dummy JSON API response and a mock API service/hook** wired to that data. Preview everything with
-syntax highlighting and download it as a ZIP.
+syntax highlighting and download it as a ZIP — or, once every screen is generated, export a **complete,
+ready-to-run React (Vite) or Angular project**.
+
+While parsing, the agent also looks for **branding**: a logo image near the top of the document and the
+dominant heading font. You confirm (or upload/enter) the logo and font family once, and they are applied
+consistently to every generated screen and to the exported project.
 
 An **offline demo provider** and a **sample design document** are built in, so the whole flow works without
 any API keys or network access.
@@ -16,6 +21,8 @@ any API keys or network access.
 
 - [Quick start](#quick-start)
 - [Using the app](#using-the-app)
+- [Branding: logo & font detection](#branding-logo--font-detection)
+- [Exporting a full project](#exporting-a-full-project)
 - [Scripts](#scripts)
 - [LLM providers](#llm-providers)
 - [Optional proxy server](#optional-proxy-server)
@@ -46,8 +53,11 @@ The left sidebar is a five-step wizard (you can jump back to any completed step 
 
 1. **Upload** – drag & drop (or browse for) one or more `.pdf` / `.docx` files (`.txt` / `.md` are accepted too).
    Each file shows its parsing status, the number of screens detected, or an error. **Load sample document**
-   adds a built-in "Acme Orders Portal" spec with four screens.
-2. **Review Screens** – one card per detected screen. Edit the name and description; add/remove fields
+   adds a built-in "Acme Orders Portal" spec with four screens. After parsing, a **Branding** card asks you to
+   provide the logo (when one was detected) and confirm the font family — see
+   [Branding](#branding-logo--font-detection).
+2. **Review Screens** – the same **Branding** card (to adjust logo/font before generating), then one card per
+   detected screen. Edit the name and description; add/remove fields
    (and change their type), buttons and layout sections; reorder or delete screens; add screens manually;
    inspect the raw extracted text; and choose a target framework per screen (or use the global default).
 3. **Configure LLM** – provider cards for *Offline demo*, *OpenAI*, *Anthropic Claude* and *Local LLM*,
@@ -58,10 +68,90 @@ The left sidebar is a five-step wizard (you can jump back to any completed step 
    **Cancel** while running. If a model omits expected files the screen is still marked done with a warning.
 5. **Preview & Export** – browse screens and their files in tabs (component, styles, mock data, API service)
    with syntax highlighting and copy-to-clipboard. **Download ZIP** exports every screen; **This screen**
-   exports only the selected one.
+   exports only the selected one. **Export Full Project (ZIP)** downloads a runnable app containing all screens
+   — it is enabled once every screen has finished generating (see [Exporting a full project](#exporting-a-full-project)).
 
 Dark mode is the default; toggle it at the bottom of the sidebar. Preferences and provider settings persist
 in `localStorage`.
+
+## Branding: logo & font detection
+
+Detection runs automatically while a document is parsed in the Upload step (best-effort — failures never block
+parsing):
+
+| | PDF (pdf.js) | Word `.docx` |
+| --- | --- | --- |
+| **Logo** | An image painted on page 1 whose centre lies in the top 30% of the page, at least 8 pt wide/high and covering ≤ 25% of the page (from the page operator list). | An image (`<w:drawing>` / VML) in a page header part or in the first three body paragraphs. The image itself (png/jpg/svg ≤ 2 MB) is extracted and offered via **Use detected image**. |
+| **Font** | Real font names from the first pages (e.g. `ABCDEF+Montserrat-Bold` → *Montserrat*). Text noticeably larger than the body size counts as headings; the heading font with the most characters wins. | Direct formatting on Title/Heading paragraphs → Title/Heading styles used by the document → other heading styles → theme heading font → document default / theme body font. |
+
+The **Branding** card (Upload and Review steps) then:
+
+- **Logo** – if a logo was detected it asks: *"We detected a logo in your document. Would you like to
+  provide/upload the logo image to use consistently across generated screens?"* Upload a `.png`, `.svg` or `.jpg`
+  (≤ 2 MB), use the image extracted from a DOCX, replace or remove it. You can add a logo even when none was detected.
+- **Font family** – prefilled with the detected family (badge *Detected* for well-known fonts, *Please confirm*
+  for unrecognised names). Type any family or pick a suggestion (Inter, Roboto, Open Sans, Lato, Montserrat, …,
+  plus web-safe fonts) and click **Use this font**; leave it empty to use the system font stack.
+
+The confirmed branding is kept in the store for the session (it is not persisted) and is used by generation:
+
+- Prompts include a *Branding* section, so LLMs apply the same font variable and logo on every screen.
+- Generated styles use `font-family: var(--app-font-family, '<Font>', system-ui, …)`; the variable itself is
+  defined in a global theme file (`theme.css` / `styles.scss`) in the exports.
+- Each screen header renders the logo — React: `import logoUrl from '../../assets/logo.<ext>'`, Angular:
+  `<img src="assets/logo.<ext>">` — or a dashed **LOGO** placeholder when no logo was provided.
+- Results remember the branding they were generated with; if you change it afterwards, the Preview step shows a
+  notice suggesting a regeneration. Exports always use the current branding (the per-screen ZIP then also
+  contains `theme.css` and `assets/logo.<ext>`).
+
+## Exporting a full project
+
+When every screen is done (skipped or cancelled screens are ignored), **Preview & Export → Export Full Project
+(ZIP)** downloads `ui-coding-agent-project.zip` with a runnable project for the target framework (one folder per
+framework if screens use both):
+
+**React** – `ui-coding-agent-react-app/` (Vite + React 18 + TypeScript)
+
+```text
+package.json          # scripts: dev, build (tsc --noEmit && vite build), preview
+vite.config.ts, tsconfig.json, index.html (+ Google Fonts link for known Google fonts)
+src/main.tsx          # imports theme.css and App.css
+src/App.tsx           # header with logo + nav, hash routing (#/customer-list) to every screen
+src/theme.css         # :root { --app-font-family: … }
+src/assets/logo.<ext> # your logo, if provided
+src/screens/<ScreenName>/   # component, CSS module, data hook, mock JSON
+README.md             # how to install, run and build
+```
+
+**Angular** – `ui-coding-agent-angular-app/` (Angular 21 CLI, standalone components, zone.js)
+
+```text
+package.json          # scripts: start (ng serve), build (ng build)
+angular.json, tsconfig.json, tsconfig.app.json
+src/index.html, src/main.ts, src/styles.scss (--app-font-family)
+src/app/app.component.*     # header with logo + routerLink nav + <router-outlet>
+src/app/app.routes.ts       # one lazy route per screen
+src/app/app.config.ts       # provideRouter + provideHttpClient
+src/assets/logo.<ext>       # your logo, if provided (served at /assets)
+src/app/screens/<screen-name>/  # component, template, styles, service, mock JSON
+README.md
+```
+
+Run it locally (Node.js 20.19+ / 22.12+):
+
+```bash
+unzip ui-coding-agent-project.zip
+cd ui-coding-agent-react-app      # or ui-coding-agent-angular-app
+npm install
+npm run dev                       # React → http://localhost:5173   (Angular: npm start → http://localhost:4200)
+npm run build                     # production build into dist/
+```
+
+Both scaffolds were verified to install and build (`tsc` + `vite build`, `ng build` with `strictTemplates`)
+with the offline-generated screens. Build-time font inlining is disabled in the Angular config so builds also
+work offline; the font is loaded at runtime. If `npm install` of the Angular project fails with
+`Cannot read properties of null (reading 'edgesOut')`, upgrade npm (10.9.x has this resolver bug) or use
+`npx npm@11 install`.
 
 ### Writing design documents that parse well
 
@@ -149,11 +239,12 @@ npm run dev               # in another terminal; Vite forwards /api/* to the pro
     ├── components/               # Sidebar stepper, step definitions, UI primitives (Button, Badge, ProgressBar…)
     ├── utils/strings.ts          # naming + escaping helpers used by generators
     └── features/
-        ├── upload/               # parseDocument (pdfjs-dist / mammoth), detectScreens heuristics, sample fixture, UploadStep
+        ├── upload/               # parseDocument (pdfjs-dist / mammoth), detectScreens + detectBranding heuristics, sample fixture, UploadStep
+        ├── branding/             # BrandingCard (logo prompt/upload, font confirmation) + logo file validation
         ├── screens/              # ReviewStep + editable ScreenCard
         ├── llm/                  # LLMClient interface, provider registry, openai-compatible / anthropic / mock clients, SettingsStep
         ├── generate/             # prompt templates, "### FILE:" wire format parser, framework generators, orchestration queue, GenerateStep
-        └── preview/              # CodeViewer (react-syntax-highlighter), PreviewStep, ZIP export (jszip + file-saver)
+        └── preview/              # CodeViewer (react-syntax-highlighter), PreviewStep, ZIP + full-project export (jszip + file-saver)
 ```
 
 ### Data flow
@@ -161,7 +252,8 @@ npm run dev               # in another terminal; Vite forwards /api/* to the pro
 ```text
 File ──parseDocument──▶ text ──detectScreens──▶ Screen[] ──(user edits)──▶ Screen[]
    ──buildGenerationMessages──▶ ChatMessage[] ──LLMClient.complete──▶ text
-   ──parseGeneratedFiles──▶ GeneratedFile[] ──▶ GenerationResult ──buildZip──▶ .zip
+   ──parseGeneratedFiles──▶ GeneratedFile[] ──▶ GenerationResult ──buildZip / buildProjectZip──▶ .zip
+File ──analysePdf / detectDocxBranding──▶ BrandingDetection ──(BrandingCard)──▶ Branding ──toBrandingRefs──▶ prompts & generators
 ```
 
 - **Provider abstraction.** The pipeline only depends on `LLMClient`
@@ -184,7 +276,10 @@ File ──parseDocument──▶ text ──detectScreens──▶ Screen[] ─
 - `Screen` – id, name, description, `fields: ScreenField[]`, `buttons`, `sections`, raw text, source file, optional framework override.
 - `LLMProviderConfig` – provider id, label, model, apiKey?, baseUrl?, temperature?, maxTokens?, useProxy?.
 - `GeneratedFile` – path, language, kind (`component` | `template` | `styles` | `mock-data` | `api-service` | `other`), content.
-- `GenerationResult` – screen id/name, framework, status, files, provider/model, error?, warnings?, timings.
+- `GenerationResult` – screen id/name, framework, status, files, provider/model, error?, warnings?, timings, `branding?` (refs it was generated with).
+- `BrandingDetection` – `logoDetected`, `logoCandidate?`, `fontFamily?`, `fontConfidence` (`high` | `low` | `none`), source file.
+- `Branding` – confirmed `fontFamily?` and `logo?` (`BrandLogo`: data URL, file name, MIME type); `BrandingRefs` is
+  its prompt-safe form (`fontFamily?`, `logoAsset?` such as `logo.png`).
 
 ## Generated output
 
@@ -234,12 +329,14 @@ The settings card, connection test, persistence and generation pipeline pick the
 2. Create `src/features/generate/generators/vue.ts` exporting a `FrameworkGenerator`:
    - `expectedFiles(screen)` – file names + purpose (injected into the LLM prompt and used for warnings),
    - `promptGuidelines` – framework conventions for the LLM,
-   - `generateOffline(screen)` – deterministic files for the offline demo (reuse `screenNames`,
+   - `brandingGuidelines(branding)` – how to apply the font variable and logo (injected into the prompt),
+   - `generateOffline(screen, branding?)` – deterministic files for the offline demo (reuse `screenNames`,
      `buildMockData` and the helpers in `generators/types.ts` / `mockData.ts`).
 3. Register it in `FRAMEWORK_GENERATORS` in `src/features/generate/generators/index.ts`.
 
 The framework toggles, per-screen selector, prompts, mock provider, preview and ZIP export all read from that
-registry. Add a test in `src/features/generate/generation.test.ts`.
+registry. Add a test in `src/features/generate/generation.test.ts`. To support **Export Full Project**, add a
+scaffold for the framework in `src/features/preview/projectExport.ts`.
 
 ## Testing
 
@@ -251,13 +348,19 @@ Vitest suites (Node environment, no browser needed):
 
 - `upload/detectScreens.test.ts` – screen/field/button/section detection on the sample fixture and edge cases.
 - `upload/parseDocument.test.ts` – DOCX parsing via mammoth on a real `.docx` built in-memory, pdf.js line
-  reconstruction, plain text, file-type detection and unsupported/empty files.
+  reconstruction, plain text, file-type detection, unsupported/empty files and branding results.
+- `upload/detectBranding.test.ts` – font-name normalisation, heading-font heuristic, PDF header-image detection
+  on operator lists (nested/form transforms), DOCX logo/font detection and extraction, merging across uploads.
 - `llm/llmService.test.ts` – provider abstraction with mocked `fetch`: request shapes/headers for OpenAI,
   Anthropic and Local, proxy routing, error mapping, validation and connection tests.
 - `generate/generation.test.ts` – wire-format parsing and path sanitization, offline generators, prompt
-  round-trip, generation queue statuses, warnings and failures.
+  round-trip, generation queue statuses, warnings and failures, and branding (font variable, logo import /
+  placeholder, prompt guidelines, end-to-end through the mock provider).
 - `generate/generationController.test.ts` – cancelling concurrent runs/retries and dropping results for removed screens.
 - `preview/zipExport.test.ts` – ZIP structure, per-screen folders, folder de-duplication, README/manifest, skipping failed screens.
+- `preview/projectExport.test.ts` – full-project ZIP for React and Angular: file tree, `package.json` scripts,
+  routes/screens wiring, theme font variable, logo asset/placeholder, de-duplication, stale-branding notes,
+  `isGenerationComplete`, and branding in the per-screen ZIP.
 - `server/app.test.ts` – proxy routing and key handling with a mocked upstream.
 
 ## Known limitations
@@ -273,4 +376,8 @@ Vitest suites (Node environment, no browser needed):
 - **CORS.** Direct browser calls to OpenAI (and some local servers) are blocked; use the proxy.
 - **Offline demo output is template-based**, not AI-generated — it reflects the extracted structure (fields,
   buttons, tables, stats, lists) but not visual design details.
-- Generated files are standalone snippets, not a full Angular/React project scaffold.
+- **Branding detection is heuristic.** Logos are only looked for on the first PDF page / DOCX header and top
+  paragraphs, and PDF logos cannot be extracted (upload the file instead). Fonts that are not embedded with a
+  real name are reported as not detected — just type the family name.
+- The full-project export is a minimal scaffold (no tests, linting or real backend); the per-screen ZIP remains
+  standalone snippets.

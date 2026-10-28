@@ -88,11 +88,13 @@ describe('parseDocument', () => {
       buttons: ['Create account'],
       sourceFile: 'signup.docx',
     })
+    expect(parsed.branding).toEqual({ logoDetected: false, fontConfidence: 'none', sourceFile: 'signup.docx' })
   })
 
   it('parses plain text documents', async () => {
     const parsed = await parseDocument(fakeFile('spec.txt', 'Screen: Home\nWelcome page.\nButtons: Start'))
     expect(parsed.screens[0].name).toBe('Home')
+    expect(parsed.branding).toEqual({ logoDetected: false, fontConfidence: 'none', sourceFile: 'spec.txt' })
   })
 
   it('rejects unsupported and empty documents', async () => {

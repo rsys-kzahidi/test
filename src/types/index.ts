@@ -94,6 +94,47 @@ export interface GenerationResult {
   warnings?: string[]
   startedAt?: number
   finishedAt?: number
+  /** Branding references the screen was generated with (font family / logo asset). */
+  branding?: BrandingRefs
+}
+
+/** A logo image supplied by the user (or extracted from a document). */
+export interface BrandLogo {
+  /** `data:` URL of the image (png, svg or jpg). */
+  dataUrl: string
+  fileName: string
+  mimeType: string
+}
+
+/** Branding confirmed by the user and applied consistently to every generated screen. */
+export interface Branding {
+  /** Font family name, e.g. "Inter". Undefined = framework default system font stack. */
+  fontFamily?: string
+  logo?: BrandLogo
+}
+
+/**
+ * Prompt-safe branding references (no binary data) threaded through prompts and generators.
+ * The logo itself is written to `assets/<logoAsset>` by the exporters.
+ */
+export interface BrandingRefs {
+  fontFamily?: string
+  /** Asset file name of the logo, e.g. "logo.png". Undefined = render a placeholder. */
+  logoAsset?: string
+}
+
+/** Branding signals detected while parsing an uploaded document. */
+export interface BrandingDetection {
+  /** Whether an embedded image that looks like a logo was found (first page / header area). */
+  logoDetected: boolean
+  /** The logo image when it could be extracted from the document (DOCX only). */
+  logoCandidate?: BrandLogo
+  /** Dominant heading font family, when one could be determined. */
+  fontFamily?: string
+  /** `high` = a known font family was identified; `low` = a raw/unrecognised name was found. */
+  fontConfidence: 'high' | 'low' | 'none'
+  /** Document the signals came from. */
+  sourceFile?: string
 }
 
 /** Wizard steps. */

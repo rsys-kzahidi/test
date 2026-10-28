@@ -2,6 +2,7 @@ import { ArrowRight, FileUp, LayoutGrid, Plus } from 'lucide-react'
 import { Button, EmptyState, PageHeader, Segmented } from '../../components/ui'
 import { useAppStore } from '../../store/appStore'
 import { uid } from '../../utils/strings'
+import { BrandingCard } from '../branding/BrandingCard'
 import { FRAMEWORK_OPTIONS } from '../generate/generators'
 import { ScreenCard } from './ScreenCard'
 
@@ -65,6 +66,7 @@ export function ReviewStep() {
           </>
         }
       />
+      <BrandingCard />
       <div className="grid gap-5 md:grid-cols-2">
         {screens.map((screen, i) => (
           <ScreenCard

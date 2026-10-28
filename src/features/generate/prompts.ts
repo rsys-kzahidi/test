@@ -1,6 +1,7 @@
-import type { Screen, TargetFramework } from '../../types'
+import type { BrandingRefs, Screen, TargetFramework } from '../../types'
 import type { ChatMessage } from '../llm/types'
 import { getGenerator } from './generators'
+import { FONT_CSS_VAR, fontDeclaration } from './generators/branding'
 
 /** Tag wrapping the machine-readable screen spec inside the user prompt. */
 export const SPEC_TAG = 'screen-spec'
@@ -9,9 +10,19 @@ export const SPEC_TAG = 'screen-spec'
 export interface ScreenSpecPayload {
   framework: TargetFramework
   screen: Pick<Screen, 'name' | 'description' | 'sections' | 'fields' | 'buttons'>
+  /** Confirmed font family / logo asset (no binary data). */
+  branding?: BrandingRefs
 }
 
-export function buildSystemPrompt(framework: TargetFramework): string {
+/** Branding requirements shared by every screen so the generated UI looks consistent. */
+export function buildBrandingGuidelines(framework: TargetFramework, branding: BrandingRefs = {}): string[] {
+  const font = branding.fontFamily
+    ? `Brand font family: "${branding.fontFamily}". Set \`font-family: ${fontDeclaration(branding)}\` on the screen root; ${FONT_CSS_VAR} is defined in the app's global theme file. Do not hard-code other font families.`
+    : `No brand font was specified: set \`font-family: ${fontDeclaration(branding)}\` on the screen root (${FONT_CSS_VAR} is defined in the app's global theme file).`
+  return [font, ...getGenerator(framework).brandingGuidelines(branding)]
+}
+
+export function buildSystemPrompt(framework: TargetFramework, branding: BrandingRefs = {}): string {
   const generator = getGenerator(framework)
   return `You are a senior front-end engineer acting as a UI coding agent.
 You convert UI screen descriptions extracted from design documents into production-quality ${generator.label} code.
@@ -22,16 +33,20 @@ Requirements:
 - Render every listed field, button and layout section. Keep the design clean, modern and responsive.
 - Use TypeScript with strict types. Do not use external UI component libraries.
 
+Branding (apply identically on every screen):
+- ${buildBrandingGuidelines(framework, branding).join('\n- ')}
+
 Output format (STRICT):
 - Output ONLY the files, no explanations before or after.
 - Each file starts with a header line "### FILE: <relative path>" followed by ONE fenced code block containing the complete file content.
 - Use exactly the file names you are given.`
 }
 
-export function buildUserPrompt(screen: Screen, framework: TargetFramework): string {
+export function buildUserPrompt(screen: Screen, framework: TargetFramework, branding: BrandingRefs = {}): string {
   const generator = getGenerator(framework)
   const payload: ScreenSpecPayload = {
     framework,
+    branding,
     screen: {
       name: screen.name,
       description: screen.description,
@@ -61,10 +76,14 @@ ${screen.rawText.slice(0, 4000)}
 """`
 }
 
-export function buildGenerationMessages(screen: Screen, framework: TargetFramework): ChatMessage[] {
+export function buildGenerationMessages(
+  screen: Screen,
+  framework: TargetFramework,
+  branding: BrandingRefs = {},
+): ChatMessage[] {
   return [
-    { role: 'system', content: buildSystemPrompt(framework) },
-    { role: 'user', content: buildUserPrompt(screen, framework) },
+    { role: 'system', content: buildSystemPrompt(framework, branding) },
+    { role: 'user', content: buildUserPrompt(screen, framework, branding) },
   ]
 }
 

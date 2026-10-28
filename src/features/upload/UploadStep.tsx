@@ -4,7 +4,9 @@ import { useCallback, useRef, useState, type DragEvent } from 'react'
 import { Badge, Button, PageHeader } from '../../components/ui'
 import { useAppStore } from '../../store/appStore'
 import { uid } from '../../utils/strings'
+import { BrandingCard } from '../branding/BrandingCard'
 import { cancelGeneration } from '../generate/generationController'
+import { NO_BRANDING_DETECTED } from './detectBranding'
 import { detectScreens } from './detectScreens'
 import { SAMPLE_DOCUMENT_NAME, SAMPLE_DOCUMENT_TEXT } from './fixtures/sampleDesign'
 import { ACCEPTED_EXTENSIONS, getDocumentKind, parseDocument } from './parseDocument'
@@ -18,7 +20,17 @@ function formatSize(bytes: number): string {
 }
 
 export function UploadStep() {
-  const { uploads, upsertUpload, removeUpload, addScreens, screens, setStep, clearScreens } = useAppStore()
+  const {
+    uploads,
+    upsertUpload,
+    removeUpload,
+    addScreens,
+    screens,
+    setStep,
+    clearScreens,
+    brandingDetection,
+    addBrandingDetection,
+  } = useAppStore()
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -42,6 +54,7 @@ export function UploadStep() {
             const parsed = await parseDocument(file)
             if (parsed.screens.length === 0) throw new Error('No screens could be detected in this document.')
             addScreens(parsed.screens)
+            addBrandingDetection(parsed.branding)
             upsertUpload({ ...base, status: 'parsed', screenCount: parsed.screens.length })
           } catch (err) {
             upsertUpload({ ...base, status: 'error', error: err instanceof Error ? err.message : String(err) })
@@ -49,13 +62,14 @@ export function UploadStep() {
         }),
       )
     },
-    [upsertUpload, addScreens],
+    [upsertUpload, addScreens, addBrandingDetection],
   )
 
   const loadSample = () => {
     const id = uid('doc')
     const detected = detectScreens(SAMPLE_DOCUMENT_TEXT, SAMPLE_DOCUMENT_NAME)
     addScreens(detected)
+    addBrandingDetection({ ...NO_BRANDING_DETECTED, sourceFile: SAMPLE_DOCUMENT_NAME })
     upsertUpload({
       id,
       name: SAMPLE_DOCUMENT_NAME,
@@ -190,6 +204,14 @@ export function UploadStep() {
             ))}
           </ul>
         </section>
+      )}
+
+      {brandingDetection && (
+        <div className="mt-8">
+          <BrandingCard
+            key={`${brandingDetection.sourceFile ?? ''}|${brandingDetection.fontFamily ?? ''}|${brandingDetection.logoDetected}`}
+          />
+        </div>
       )}
 
       <div className="mt-8 flex items-center justify-between gap-4">

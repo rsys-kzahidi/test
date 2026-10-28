@@ -1,5 +1,6 @@
-import type { GeneratedFile, Screen } from '../../../types'
+import type { BrandingRefs, GeneratedFile, Screen } from '../../../types'
 import { escapeMarkup, escapeSingleQuoted } from '../../../utils/strings'
+import { fontDeclaration, LOGO_PLACEHOLDER_TEXT } from './branding'
 import { analyseScreen, buildMockData, type ScreenModel } from './mockData'
 import { screenNames, type FrameworkGenerator, type ScreenNames } from './types'
 
@@ -11,6 +12,17 @@ function angularFiles(n: ScreenNames) {
     service: `${n.kebab}.service.ts`,
     mock: `${n.kebab}.mock.json`,
   }
+}
+
+/** URL of the logo as served by Angular (src/assets/ is copied to /assets). */
+export function angularLogoUrl(logoAsset: string): string {
+  return `assets/${logoAsset}`
+}
+
+function renderBrand(branding: BrandingRefs): string {
+  return branding.logoAsset
+    ? `<img src="${angularLogoUrl(branding.logoAsset)}" alt="Logo" class="logo" />`
+    : `<span class="logo-placeholder" aria-hidden="true">${LOGO_PLACEHOLDER_TEXT}</span>`
 }
 
 function indent(text: string, spaces: number): string {
@@ -64,7 +76,7 @@ function renderButtons(buttons: string[], hasForm: boolean): string {
     .join('\n')
 }
 
-function templateSource(screen: Screen, n: ScreenNames, m: ScreenModel): string {
+function templateSource(screen: Screen, n: ScreenNames, m: ScreenModel, branding: BrandingRefs): string {
   const hasForm = m.fields.length > 0
   const primary = escapeSingleQuoted(screen.buttons[0] ?? 'Save').replace(/"/g, '&quot;')
   const buttons = renderButtons(screen.buttons, hasForm)
@@ -129,6 +141,7 @@ ${indent(buttons, 2)}
 
 <section class="screen" *ngIf="!loading && !error && data as d" aria-labelledby="${n.kebab}-title">
   <header class="header">
+    <div class="brand">${renderBrand(branding)}</div>
     <h1 id="${n.kebab}-title">${escapeMarkup(screen.name)}</h1>
     <p class="muted">${escapeMarkup(screen.description)}</p>
   </header>
@@ -258,14 +271,41 @@ export class ${n.pascal}Service {
 `
 }
 
-const ANGULAR_STYLES = `:host {
+const angularStyles = (branding: BrandingRefs) => `:host {
   display: block;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: ${fontDeclaration(branding)};
   color: #0f172a;
 
   --border: #e2e8f0;
   --muted: #64748b;
   --primary: #4f46e5;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+
+  .logo {
+    display: block;
+    height: 40px;
+    width: auto;
+    max-width: 200px;
+    object-fit: contain;
+  }
+
+  .logo-placeholder {
+    display: inline-grid;
+    place-items: center;
+    height: 40px;
+    padding: 0 0.75rem;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+  }
 }
 
 .screen {
@@ -476,6 +516,13 @@ export const angularGenerator: FrameworkGenerator = {
     'An @Injectable({ providedIn: "root" }) service in <name>.service.ts that imports the mock JSON and returns it as an Observable with rxjs delay() while a useMock flag is true; otherwise uses HttpClient against an exported endpoint constant.',
     'Handle loading, error (with retry) and empty states. Use semantic, accessible HTML (labels, scope, aria attributes).',
   ].join('\n- '),
+  brandingGuidelines(branding) {
+    return [
+      branding.logoAsset
+        ? `Render the brand logo at the top of the screen header: \`<img src="${angularLogoUrl(branding.logoAsset)}" alt="Logo" />\` (the file lives in src/assets/; keep it about 40px tall).`
+        : `No logo was provided: render a small "${LOGO_PLACEHOLDER_TEXT}" placeholder (dashed border box) at the top of the screen header instead of an image.`,
+    ]
+  },
   expectedFiles(screen) {
     const f = angularFiles(screenNames(screen))
     return [
@@ -486,14 +533,14 @@ export const angularGenerator: FrameworkGenerator = {
       { path: f.mock, kind: 'mock-data', purpose: 'Dummy JSON API response consumed by the screen' },
     ]
   },
-  generateOffline(screen: Screen): GeneratedFile[] {
+  generateOffline(screen: Screen, branding: BrandingRefs = {}): GeneratedFile[] {
     const n = screenNames(screen)
     const m = analyseScreen(screen)
     const f = angularFiles(n)
     return [
       { path: f.component, language: 'typescript', kind: 'component', content: componentSource(screen, n, m) },
-      { path: f.template, language: 'html', kind: 'template', content: templateSource(screen, n, m) },
-      { path: f.styles, language: 'scss', kind: 'styles', content: ANGULAR_STYLES },
+      { path: f.template, language: 'html', kind: 'template', content: templateSource(screen, n, m, branding) },
+      { path: f.styles, language: 'scss', kind: 'styles', content: angularStyles(branding) },
       { path: f.service, language: 'typescript', kind: 'api-service', content: serviceSource(screen, n) },
       {
         path: f.mock,

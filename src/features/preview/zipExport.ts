@@ -1,7 +1,8 @@
 import JSZip from 'jszip'
-import type { GenerationResult, Screen } from '../../types'
+import type { Branding, BrandingRefs, GenerationResult, Screen } from '../../types'
 import { toKebabCase } from '../../utils/strings'
 import { sanitizePath } from '../generate/fileFormat'
+import { buildThemeCss, dataUrlToBytes, FONT_CSS_VAR, toBrandingRefs } from '../generate/generators/branding'
 
 export const ZIP_ROOT = 'ui-coding-agent-output'
 
@@ -18,7 +19,23 @@ function folderNames(results: GenerationResult[]): Map<string, string> {
   return out
 }
 
-function readme(results: GenerationResult[], folders: Map<string, string>): string {
+function brandingNotes(refs: BrandingRefs): string {
+  if (!refs.fontFamily && !refs.logoAsset) return ''
+  const lines = ['## Branding', '']
+  if (refs.fontFamily) {
+    lines.push(
+      `- Font family \`${refs.fontFamily}\`: include \`theme.css\` globally (it defines the \`${FONT_CSS_VAR}\` variable used by every screen).`,
+    )
+  }
+  if (refs.logoAsset) {
+    lines.push(
+      `- Logo \`assets/${refs.logoAsset}\`: copy it to \`src/assets/\` (React screens import \`../../assets/${refs.logoAsset}\` from \`src/screens/<Screen>/\`; Angular screens use \`assets/${refs.logoAsset}\`).`,
+    )
+  }
+  return `\n${lines.join('\n')}\n`
+}
+
+function readme(results: GenerationResult[], folders: Map<string, string>, refs: BrandingRefs = {}): string {
   const rows = results
     .map((r) => `| ${r.screenName} | ${r.framework} | \`${folders.get(r.screenId)}/\` | ${r.files.length} |`)
     .join('\n')
@@ -47,15 +64,16 @@ simulated latency so it can later be swapped for a real backend.
 ${rows}
 
 ${notes.join('\n\n')}
-`
+${brandingNotes(refs)}`
 }
 
 /**
  * Build a JSZip archive with one folder per screen:
  *   ui-coding-agent-output/<screen-name>/<files…>, plus README.md and manifest.json.
+ * When branding is provided, `theme.css` and the logo under `assets/` are added too.
  * Only successfully generated screens are included.
  */
-export function buildZip(results: GenerationResult[], screens: Screen[] = []): JSZip {
+export function buildZip(results: GenerationResult[], screens: Screen[] = [], branding: Branding = {}): JSZip {
   const done = results.filter((r) => r.status === 'done' && r.files.length > 0)
   const zip = new JSZip()
   const root = zip.folder(ZIP_ROOT)!
@@ -86,7 +104,10 @@ export function buildZip(results: GenerationResult[], screens: Screen[] = []): J
     }),
   }
   root.file('manifest.json', `${JSON.stringify(manifest, null, 2)}\n`)
-  root.file('README.md', readme(done, folders))
+  const refs = toBrandingRefs(branding)
+  if (refs.fontFamily || refs.logoAsset) root.file('theme.css', buildThemeCss(refs))
+  if (refs.logoAsset && branding.logo) root.file(`assets/${refs.logoAsset}`, dataUrlToBytes(branding.logo.dataUrl))
+  root.file('README.md', readme(done, folders, refs))
   return zip
 }
 
@@ -95,8 +116,9 @@ export async function downloadZip(
   results: GenerationResult[],
   screens: Screen[] = [],
   fileName = `${ZIP_ROOT}.zip`,
+  branding: Branding = {},
 ): Promise<void> {
   const { saveAs } = await import('file-saver')
-  const blob = await buildZip(results, screens).generateAsync({ type: 'blob', compression: 'DEFLATE' })
+  const blob = await buildZip(results, screens, branding).generateAsync({ type: 'blob', compression: 'DEFLATE' })
   saveAs(blob, fileName)
 }

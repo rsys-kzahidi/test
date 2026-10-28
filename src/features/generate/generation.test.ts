@@ -7,9 +7,18 @@ import { defaultProviderConfigs } from '../llm/llmService'
 import type { LLMClient } from '../llm/types'
 import { formatFilesAsResponse, kindForPath, parseGeneratedFiles, sanitizePath } from './fileFormat'
 import { FRAMEWORK_GENERATORS } from './generators'
+import {
+  buildThemeCss,
+  dataUrlToBytes,
+  FONT_CSS_VAR,
+  fontDeclaration,
+  googleFontsHref,
+  sanitizeFontFamily,
+  toBrandingRefs,
+} from './generators/branding'
 import { buildMockData } from './generators/mockData'
 import { runGenerationQueue } from './orchestrator'
-import { buildUserPrompt, extractScreenSpec } from './prompts'
+import { buildSystemPrompt, buildUserPrompt, extractScreenSpec } from './prompts'
 
 const screens = detectScreens(SAMPLE_DOCUMENT_TEXT)
 
@@ -126,5 +135,72 @@ describe('runGenerationQueue', () => {
     })
     expect(complete).toHaveBeenCalledTimes(1)
     expect(updates.filter((u) => u.screenId === screens[1].id).map((u) => u.status)).toEqual(['queued'])
+  })
+})
+
+describe('branding', () => {
+  const brand = { fontFamily: 'Inter', logoAsset: 'logo.svg' }
+
+  it('normalises confirmed branding into prompt-safe references', () => {
+    expect(sanitizeFontFamily(` "Open Sans";}</style> `)).toBe('Open Sansstyle')
+    expect(sanitizeFontFamily('  ')).toBeUndefined()
+    expect(
+      toBrandingRefs({ fontFamily: 'Roboto', logo: { dataUrl: 'data:image/png;base64,AA==', fileName: 'x.png', mimeType: 'image/png' } }),
+    ).toEqual({ fontFamily: 'Roboto', logoAsset: 'logo.png' })
+    expect(toBrandingRefs({ logo: { dataUrl: 'data:image/gif;base64,AA==', fileName: 'x.gif', mimeType: 'image/gif' } })).toEqual({})
+    expect(fontDeclaration({ fontFamily: 'Merriweather' })).toBe(
+      `var(${FONT_CSS_VAR}, 'Merriweather', system-ui, -apple-system, 'Segoe UI', Roboto, serif)`,
+    )
+    expect(buildThemeCss({ fontFamily: 'Inter' })).toContain(`${FONT_CSS_VAR}: 'Inter',`)
+    expect(googleFontsHref('inter')).toBe('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap')
+    expect(googleFontsHref('Arial')).toBeNull()
+    expect(Array.from(dataUrlToBytes('data:image/png;base64,AQID'))).toEqual([1, 2, 3])
+    expect(new TextDecoder().decode(dataUrlToBytes('data:image/svg+xml,%3Csvg%2F%3E'))).toBe('<svg/>')
+  })
+
+  it('threads the font variable and logo into React output', () => {
+    const [component, styles] = FRAMEWORK_GENERATORS.react.generateOffline(screens[0], brand)
+    expect(component.content).toContain("import logoUrl from '../../assets/logo.svg'")
+    expect(component.content).toContain('<img src={logoUrl} alt="Logo" className={styles.logo} />')
+    expect(styles.content).toContain(`font-family: var(${FONT_CSS_VAR}, 'Inter',`)
+
+    const [plain, plainStyles] = FRAMEWORK_GENERATORS.react.generateOffline(screens[0])
+    expect(plain.content).not.toContain('logoUrl')
+    expect(plain.content).toContain('className={styles.logoPlaceholder}')
+    expect(plainStyles.content).toContain(`font-family: var(${FONT_CSS_VAR}, system-ui`)
+  })
+
+  it('threads the font variable and logo into Angular output', () => {
+    const files = FRAMEWORK_GENERATORS.angular.generateOffline(screens[0], brand)
+    const html = files.find((f) => f.path.endsWith('.html'))!.content
+    const scss = files.find((f) => f.path.endsWith('.scss'))!.content
+    expect(html).toContain('<img src="assets/logo.svg" alt="Logo" class="logo" />')
+    expect(scss).toContain(`font-family: var(${FONT_CSS_VAR}, 'Inter',`)
+    const plainHtml = FRAMEWORK_GENERATORS.angular.generateOffline(screens[0]).find((f) => f.path.endsWith('.html'))!
+    expect(plainHtml.content).toContain('class="logo-placeholder"')
+    expect(plainHtml.content).not.toContain('<img')
+  })
+
+  it('includes branding guidelines in prompts and the embedded spec', () => {
+    const system = buildSystemPrompt('react', brand)
+    expect(system).toContain('Branding (apply identically on every screen):')
+    expect(system).toContain(FONT_CSS_VAR)
+    expect(system).toContain("'../../assets/logo.svg'")
+    expect(buildSystemPrompt('angular', {})).toContain('LOGO')
+    expect(extractScreenSpec(buildUserPrompt(screens[0], 'angular', brand))).toMatchObject({ branding: brand })
+  })
+
+  it('applies branding end-to-end through the mock provider and records it on results', async () => {
+    const client = createMockClient(defaultProviderConfigs().mock, { latencyMs: 0 })
+    const [react, angular] = await runGenerationQueue(screens.slice(0, 2), {
+      client,
+      resolveFramework: (s) => (s.id === screens[0].id ? 'react' : 'angular'),
+      onUpdate: () => {},
+      branding: brand,
+    })
+    expect(react.branding).toEqual(brand)
+    expect(react.files[0].content).toContain("import logoUrl from '../../assets/logo.svg'")
+    expect(angular.files.find((f) => f.path.endsWith('.html'))!.content).toContain('src="assets/logo.svg"')
+    expect(angular.files.find((f) => f.path.endsWith('.scss'))!.content).toContain("'Inter'")
   })
 })
