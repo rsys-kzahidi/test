@@ -113,4 +113,18 @@ describe('runGenerationQueue', () => {
     expect(results[0].error).toBe('HTTP 500')
     expect(results[1].error).toMatch(/expected "### FILE/)
   })
+
+  it('skips screens that are no longer active without calling the model', async () => {
+    const complete = vi.fn().mockResolvedValue('### FILE: a.ts\n```ts\nexport {}\n```')
+    const updates: GenerationResult[] = []
+    await runGenerationQueue(screens.slice(0, 2), {
+      client: { providerId: 'local', model: 'm', complete },
+      resolveFramework: () => 'react',
+      onUpdate: (r) => updates.push(r),
+      isActive: (s) => s.id !== screens[1].id,
+      concurrency: 1,
+    })
+    expect(complete).toHaveBeenCalledTimes(1)
+    expect(updates.filter((u) => u.screenId === screens[1].id).map((u) => u.status)).toEqual(['queued'])
+  })
 })

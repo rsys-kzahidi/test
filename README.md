@@ -256,7 +256,8 @@ Vitest suites (Node environment, no browser needed):
   Anthropic and Local, proxy routing, error mapping, validation and connection tests.
 - `generate/generation.test.ts` – wire-format parsing and path sanitization, offline generators, prompt
   round-trip, generation queue statuses, warnings and failures.
-- `preview/zipExport.test.ts` – ZIP structure, per-screen folders, de-duplication, manifest.
+- `generate/generationController.test.ts` – cancelling concurrent runs/retries and dropping results for removed screens.
+- `preview/zipExport.test.ts` – ZIP structure, per-screen folders, folder de-duplication, README/manifest, skipping failed screens.
 - `server/app.test.ts` – proxy routing and key handling with a mocked upstream.
 
 ## Known limitations

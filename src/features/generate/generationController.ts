@@ -4,13 +4,14 @@ import { createLLMClient } from '../llm/llmService'
 import { runGenerationQueue } from './orchestrator'
 
 /**
- * Module-level controller so a running generation survives navigation between
- * wizard steps and can still be cancelled.
+ * Module-level controllers (one per run, e.g. "generate all" plus single-screen
+ * retries) so running generations survive navigation between wizard steps and
+ * can all be cancelled.
  */
-let controller: AbortController | null = null
+const controllers = new Set<AbortController>()
 
 export function isGenerationRunning(): boolean {
-  return controller !== null && !controller.signal.aborted
+  return controllers.size > 0
 }
 
 /** Generate code for the given screens with the active provider. Errors are recorded per screen. */
@@ -19,10 +20,7 @@ export async function startGeneration(screens: Screen[]): Promise<void> {
   const state = useAppStore.getState()
   const config = state.providers[state.activeProvider]
   const local = new AbortController()
-  // Allow retries of single screens while others are still running by chaining signals.
-  const parent = controller
-  if (parent && !parent.signal.aborted) parent.signal.addEventListener('abort', () => local.abort(), { once: true })
-  else controller = local
+  controllers.add(local)
 
   try {
     let client
@@ -49,13 +47,14 @@ export async function startGeneration(screens: Screen[]): Promise<void> {
       signal: local.signal,
       resolveFramework: (s) => frameworkFor(s, useAppStore.getState().framework),
       onUpdate: (result) => useAppStore.getState().setResult(result),
+      isActive: (s) => useAppStore.getState().screens.some((sc) => sc.id === s.id),
     })
   } finally {
-    if (controller === local) controller = null
+    controllers.delete(local)
   }
 }
 
 export function cancelGeneration(): void {
-  controller?.abort()
-  controller = null
+  for (const c of controllers) c.abort()
+  controllers.clear()
 }

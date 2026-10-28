@@ -110,7 +110,13 @@ export const useAppStore = create<AppState>()(
           connection: { ...s.connection, [id]: { state: 'idle' } },
         })),
       setConnection: (id, status) => set((s) => ({ connection: { ...s.connection, [id]: status } })),
-      setResult: (result) => set((s) => ({ results: { ...s.results, [result.screenId]: result } })),
+      setResult: (result) =>
+        set((s) =>
+          // Ignore late updates for screens that were removed while generating.
+          s.screens.some((sc) => sc.id === result.screenId)
+            ? { results: { ...s.results, [result.screenId]: result } }
+            : {},
+        ),
       clearResults: () => set({ results: {} }),
       openPreview: (previewScreenId) => set({ previewScreenId, step: 'preview' }),
       reset: () => set({ step: 'upload', uploads: [], screens: [], results: {} }),

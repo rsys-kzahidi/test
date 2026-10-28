@@ -37,6 +37,8 @@ export interface RunQueueOptions {
   client: LLMClient
   resolveFramework: (screen: Screen) => TargetFramework
   onUpdate: (result: GenerationResult) => void
+  /** Return false to skip a queued screen (e.g. it was deleted meanwhile). */
+  isActive?: (screen: Screen) => boolean
   concurrency?: number
   signal?: AbortSignal
 }
@@ -50,7 +52,7 @@ function isAbort(err: unknown): boolean {
  * status transitions (queued → generating → done | error) via `onUpdate`.
  */
 export async function runGenerationQueue(screens: Screen[], options: RunQueueOptions): Promise<GenerationResult[]> {
-  const { client, resolveFramework, onUpdate, signal } = options
+  const { client, resolveFramework, onUpdate, signal, isActive } = options
   const concurrency = Math.max(1, options.concurrency ?? 2)
   const results: GenerationResult[] = screens.map((s) => ({
     screenId: s.id,
@@ -72,6 +74,10 @@ export async function runGenerationQueue(screens: Screen[], options: RunQueueOpt
       if (signal?.aborted) {
         results[index] = { ...base, status: 'error', error: 'Cancelled', finishedAt: Date.now() }
         onUpdate(results[index])
+        continue
+      }
+      if (isActive && !isActive(screen)) {
+        results[index] = { ...base, status: 'error', error: 'Skipped (screen removed)', finishedAt: Date.now() }
         continue
       }
       const startedAt = Date.now()

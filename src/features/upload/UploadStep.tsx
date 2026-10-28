@@ -4,6 +4,7 @@ import { useCallback, useRef, useState, type DragEvent } from 'react'
 import { Badge, Button, PageHeader } from '../../components/ui'
 import { useAppStore } from '../../store/appStore'
 import { uid } from '../../utils/strings'
+import { cancelGeneration } from '../generate/generationController'
 import { detectScreens } from './detectScreens'
 import { SAMPLE_DOCUMENT_NAME, SAMPLE_DOCUMENT_TEXT } from './fixtures/sampleDesign'
 import { ACCEPTED_EXTENSIONS, getDocumentKind, parseDocument } from './parseDocument'
@@ -138,7 +139,15 @@ export function UploadStep() {
             <h2 id="files-heading" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
               Files ({uploads.length})
             </h2>
-            <Button variant="ghost" size="sm" icon={<Trash2 className="size-3.5" />} onClick={clearScreens}>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Trash2 className="size-3.5" />}
+              onClick={() => {
+                cancelGeneration()
+                clearScreens()
+              }}
+            >
               Clear all
             </Button>
           </div>
