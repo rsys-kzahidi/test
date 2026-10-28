@@ -162,10 +162,16 @@ function ProviderCard({ id }: { id: ProviderId }) {
               disabled={config.useProxy}
               onChange={(e) => updateProvider(id, { baseUrl: e.target.value })}
             />
-            {id === 'local' && (
+            {config.useProxy ? (
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Ollama: <code>http://localhost:11434/v1</code> · LM Studio: <code>http://localhost:1234/v1</code>
+                The proxy forwards to the upstream URL configured in the server's <code>.env</code>.
               </p>
+            ) : (
+              id === 'local' && (
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Ollama: <code>http://localhost:11434/v1</code> · LM Studio: <code>http://localhost:1234/v1</code>
+                </p>
+              )
             )}
           </div>
 

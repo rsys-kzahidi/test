@@ -1,6 +1,7 @@
 import type { GeneratedFile, GenerationResult, Screen, TargetFramework } from '../../types'
 import type { LLMClient } from '../llm/types'
 import { parseGeneratedFiles } from './fileFormat'
+import { getGenerator } from './generators'
 import { buildGenerationMessages } from './prompts'
 
 export interface GenerateScreenOptions {
@@ -20,6 +21,16 @@ export async function generateScreen(screen: Screen, options: GenerateScreenOpti
     )
   }
   return files
+}
+
+/** Expected files (by file name) that are absent from a generation result. */
+export function findMissingFiles(screen: Screen, framework: TargetFramework, files: GeneratedFile[]): string[] {
+  const baseName = (path: string) => path.split('/').pop()!.toLowerCase()
+  const produced = new Set(files.map((f) => baseName(f.path)))
+  return getGenerator(framework)
+    .expectedFiles(screen)
+    .map((f) => f.path)
+    .filter((path) => !produced.has(baseName(path)))
 }
 
 export interface RunQueueOptions {
@@ -67,7 +78,9 @@ export async function runGenerationQueue(screens: Screen[], options: RunQueueOpt
       onUpdate({ ...base, status: 'generating', startedAt })
       try {
         const files = await generateScreen(screen, { client, framework: base.framework, signal })
-        results[index] = { ...base, status: 'done', files, startedAt, finishedAt: Date.now() }
+        const missing = findMissingFiles(screen, base.framework, files)
+        const warnings = missing.length ? [`Model did not return: ${missing.join(', ')}`] : undefined
+        results[index] = { ...base, status: 'done', files, warnings, startedAt, finishedAt: Date.now() }
       } catch (err) {
         const error = isAbort(err) ? 'Cancelled' : err instanceof Error ? err.message : String(err)
         results[index] = { ...base, status: 'error', error, startedAt, finishedAt: Date.now() }

@@ -141,13 +141,19 @@ export function GenerateStep() {
                   </span>
                 </div>
                 <p className="mt-0.5 truncate font-mono text-xs text-slate-500 dark:text-slate-400">{files.join('  ·  ')}</p>
+                {status === 'done' &&
+                  result?.warnings?.map((w) => (
+                    <p key={w} className="mt-1 text-xs break-words text-amber-600 dark:text-amber-400">
+                      {w}
+                    </p>
+                  ))}
                 {result?.error && (
                   <p className="mt-1 text-xs break-words text-red-600 dark:text-red-400" role="alert">
                     {result.error}
                   </p>
                 )}
               </div>
-              {status === 'error' && (
+              {(status === 'error' || (status === 'done' && !!result?.warnings?.length)) && (
                 <Button
                   size="sm"
                   icon={<RotateCcw className="size-3.5" />}

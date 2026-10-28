@@ -78,8 +78,20 @@ describe('runGenerationQueue', () => {
     expect(results[0].framework).toBe('angular')
     expect(results[0].files).toHaveLength(5)
     expect(results[1].files).toHaveLength(4)
+    expect(results.every((r) => !r.warnings)).toBe(true)
     const statuses = updates.filter((u) => u.screenId === screens[0].id).map((u) => u.status)
     expect(statuses).toEqual(['queued', 'generating', 'done'])
+  })
+
+  it('warns about expected files the model did not return', async () => {
+    const client: LLMClient = {
+      providerId: 'local',
+      model: 'llama3.1',
+      complete: vi.fn().mockResolvedValue('### FILE: Login.tsx\n```tsx\nexport default function Login() {}\n```'),
+    }
+    const [result] = await runGenerationQueue([screens[0]], { client, resolveFramework: () => 'react', onUpdate: () => {} })
+    expect(result.status).toBe('done')
+    expect(result.warnings).toEqual(['Model did not return: Login.module.css, useLoginData.ts, login.mock.json'])
   })
 
   it('marks screens as failed when the provider errors or returns no files', async () => {

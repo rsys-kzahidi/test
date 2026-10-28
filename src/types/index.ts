@@ -90,6 +90,8 @@ export interface GenerationResult {
   provider?: ProviderId
   model?: string
   error?: string
+  /** Non-fatal issues, e.g. expected files the model did not return. */
+  warnings?: string[]
   startedAt?: number
   finishedAt?: number
 }

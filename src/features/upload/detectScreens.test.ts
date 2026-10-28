@@ -65,6 +65,14 @@ describe('detectScreens', () => {
     expect(screens[1].buttons).toEqual(['Pay now'])
   })
 
+  it('splits inline keyword lists, including bracketed buttons', () => {
+    const [screen] = detectScreens(
+      'Screen 1: Orders\nButtons: [ Export CSV ] [ Refresh ]\nSections: Filters bar, Orders table, Pagination',
+    )
+    expect(screen.buttons).toEqual(['Export CSV', 'Refresh'])
+    expect(screen.sections).toEqual(['Filters bar', 'Orders table', 'Pagination'])
+  })
+
   it('returns an empty list for blank input', () => {
     expect(detectScreens('   \n\f\n ')).toEqual([])
   })

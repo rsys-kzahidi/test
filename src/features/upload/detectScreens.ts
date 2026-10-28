@@ -137,6 +137,12 @@ function dedupe<T>(items: T[], keyOf: (item: T) => string): T[] {
   })
 }
 
+/** Returns the labels of a line made up only of bracketed buttons, e.g. "[ Save ] [ Cancel ]". */
+function bracketItems(text: string): string[] | null {
+  const items = [...text.matchAll(/\[\s*([^\]]{1,40}?)\s*\]/g)].map((m) => m[1])
+  return items.length && text.replace(/\[[^\]]*\]/g, '').trim() === '' ? items : null
+}
+
 interface Block {
   name: string
   lines: string[]
@@ -160,6 +166,12 @@ export function parseScreenBlock(name: string, lines: string[], sourceFile?: str
     else sections.push(clean)
   }
 
+  /** Split inline list content; "[ Save ] [ Cancel ]" yields one item per bracket. */
+  const addItems = (key: ListKey, text: string) => {
+    const brackets = bracketItems(text)
+    ;(brackets ?? splitList(text)).forEach((i) => addItem(key, i))
+  }
+
   for (const rawLine of lines) {
     const line = rawLine.trim()
     if (!line) {
@@ -172,15 +184,14 @@ export function parseScreenBlock(name: string, lines: string[], sourceFile?: str
       mode = kw.key
       if (kw.rest) {
         if (kw.key === 'description') description.push(kw.rest)
-        else if (kw.key === 'sections') sections.push(kw.rest)
-        else splitList(kw.rest).forEach((i) => addItem(kw.key as ListKey, i))
+        else addItems(kw.key, kw.rest)
       }
       continue
     }
 
     // Inline bracket buttons: "[ Save ]  [ Cancel ]"
-    const brackets = [...line.matchAll(/\[\s*([^\]]{1,40}?)\s*\]/g)].map((m) => m[1])
-    if (brackets.length && line.replace(/\[[^\]]*\]/g, '').trim() === '') {
+    const brackets = bracketItems(line)
+    if (brackets) {
       brackets.forEach((b) => buttons.push(b))
       continue
     }
@@ -191,7 +202,7 @@ export function parseScreenBlock(name: string, lines: string[], sourceFile?: str
       if (mode === 'fields' || mode === 'buttons' || mode === 'sections') {
         // Bullets in the fields list may still hold several comma separated items.
         if (mode === 'sections') addItem('sections', item)
-        else splitList(item).forEach((i) => addItem(mode as ListKey, i))
+        else addItems(mode, item)
       } else {
         sections.push(item)
       }
@@ -207,7 +218,7 @@ export function parseScreenBlock(name: string, lines: string[], sourceFile?: str
     if (mode === 'fields' || mode === 'buttons') {
       // Lists extracted from PDFs often lose their bullet characters: keep short lines in the list.
       if (line.length <= 60 && !/[.!?]$/.test(line)) {
-        splitList(line).forEach((i) => addItem(mode as ListKey, i))
+        addItems(mode, line)
         continue
       }
       mode = 'description'
